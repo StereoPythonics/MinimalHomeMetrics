@@ -1,0 +1,1 @@
+python ./gatherTempAndHumidity.py $1 $2

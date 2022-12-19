@@ -1,0 +1,18 @@
+sudo apt-get install git
+git clone https://github.com/pimoroni/pms5003-python
+cd pms5003-python/
+sudo ./install.sh
+
+sudo nano /boot/config.txt //To use PM5003 type sensors with the pi you need to disable the serial interface to free up the hardware serial interface.
+
+sudo apt-get install pip
+sudo pip install --upgrade setuptools
+sudo pip install --upgrade adafruit-python-shell
+wget https://raw.githubusercontent.com/adafruit/Raspberry-Pi-Installer-Scripts/master/raspi-blinka.py
+sudo python3 raspi-blinka.py
+
+//after restart
+
+sudo pip install pms5003
+sudo pip install adafruit-circuitpython-rfm9x
+sudo pip install adafruit-circuitpython-dht
