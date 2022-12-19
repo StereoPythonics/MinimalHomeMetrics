@@ -1,0 +1,116 @@
+<head>
+    <script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>
+</head>
+
+<body style="background-color:#505050;">
+    <div id="TempHumDiv" style="width:100%;height:900px;"></div>
+    <div id="PMxDiv" style="width:100%;height:900px;"></div>
+</body>
+<script>
+    let background = "#303030"
+    {
+        var tempHumLayout = {
+            title: '3902A Temperature/Humidity',
+            yaxis: { title: 'Temperature (C)' },
+            yaxis2: {
+                title: 'Humidity',
+                overlaying: 'y',
+                side: 'right'
+            },
+            paper_bgcolor: background,
+            plot_bgcolor: background,
+            font: { color: "#EEEEEE" },
+            legend: { orientation: "h" }
+        };
+
+        let TempHumDiv = document.getElementById('TempHumDiv')
+        let data0 = [];
+        (async () => {
+            await asyncForEach(getLastFewDays(), async date => {
+                await graphMetric(TempHumDiv, data0, 0, tempHumLayout, 'livingroom', 'Temperature', date, 'y1')
+                await graphMetric(TempHumDiv, data0, 1, tempHumLayout, 'bedroom', 'Temperature', date, 'y1')
+                await graphMetric(TempHumDiv, data0, 2, tempHumLayout, 'livingroom', 'Humidity', date, 'y2')
+                await graphMetric(TempHumDiv, data0, 3, tempHumLayout, 'bedroom', 'Humidity', date, 'y2')
+            });
+            
+            ExponentialSmoothing(data0[0],0.005);
+            ExponentialSmoothing(data0[1],0.005);
+            ExponentialSmoothing(data0[2],0.05);
+            ExponentialSmoothing(data0[3],0.05);
+            Plotly.newPlot(TempHumDiv, data0, tempHumLayout);
+        })();
+
+    }
+    {
+        var PMxlayout = {
+            title: '3902A Particulates',
+            yaxis: { title: 'ug/m3' },
+            paper_bgcolor: background,
+            plot_bgcolor: background,
+            font: { color: "#EEEEEE" },
+            legend: { orientation: "h" }
+        };
+        let PMxDiv = document.getElementById('PMxDiv')
+        let data1 = [];
+        (async () => {
+            await asyncForEach(getLastFewDays(), async date => {
+                await graphMetric(PMxDiv, data1, 0, PMxlayout, 'bedroom', 'AirQualityPM1_0_ug_m-3', date, 'y1')
+                await graphMetric(PMxDiv, data1, 1, PMxlayout, 'bedroom', 'AirQualityPM2_5_ug_m-3', date, 'y1')
+                await graphMetric(PMxDiv, data1, 2, PMxlayout, 'bedroom', 'AirQualityPM10_ug_m-3', date, 'y1')
+            });
+            data1.forEach(t => {
+                ExponentialSmoothing(t,0.05)
+            })
+            Plotly.newPlot(PMxDiv, data1, PMxlayout);
+        })();
+
+    }
+
+    async function asyncForEach(array, callback) {
+        for (let index = 0; index < array.length; index++) {
+            await callback(array[index], index, array);
+        }
+    }
+    function ExponentialSmoothing(trace, factor) {
+        let rolling = trace.y[0];
+        for (let i = 0; i < trace.y.length; i++) {
+            trace.y[i] = (rolling * (1-factor)) + (trace.y[i] * factor);
+            rolling = trace.y[i];
+        }
+    }
+
+    function getLastFewDays() {
+        return [
+            new Date(new Date().setDate(new Date().getDate() - 2)).toISOString().substring(0, 10),
+            new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().substring(0, 10),
+            new Date().toISOString().substring(0, 10) //this is horrible :(
+        ]
+    }
+    async function graphMetric(myDiv, data, index, layout, source, metric, date, axis) {
+        try {
+            let response = await fetch(
+                `http://192.168.1.171:8080/${metric}_${source}_${date}.json`,
+                { method: 'GET' }
+            )
+            let json = await response.json();
+            if (data[index] == undefined) {
+                data[index] = {
+                    x: json.map(r => r.TimeStamp),
+                    y: json.map(r => r.Value),
+                    type: 'scatter',
+                    name: source + ", " + metric,
+                    yaxis: axis,
+                };
+            }
+            else {
+                let trace = data[index];
+                trace.x = trace.x.concat(json.map(r => r.TimeStamp))
+                trace.y = trace.y.concat(json.map(r => r.Value))
+            }
+            Plotly.newPlot(myDiv, data, layout);
+        }
+        catch (error) {
+            console.error(error);
+        }
+    }
+</script>
