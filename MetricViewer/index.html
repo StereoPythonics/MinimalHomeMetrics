@@ -1,0 +1,216 @@
+<head>
+    <script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>
+</head>
+
+<body style="background-color:#505050;">
+    <div id="TempDiv" style="width:100%;height:50%;"></div>
+    <div id="HumDiv" style="width:100%;height:50%;"></div>
+    <div id="PMxDiv" style="width:100%;height:50%;"></div>
+</body>
+<script>
+
+    let config = {};
+
+    PopulateConfigFromUrlParameters(config);
+
+    let background = "#303030"
+
+    var tempLayout = {
+        title: 'Temperature',
+        yaxis: { title: 'Temperature (C)' },
+        paper_bgcolor: background,
+        plot_bgcolor: background,
+        font: { color: "#EEEEEE" },
+        legend: { orientation: "h" }
+    };
+
+    var humLayout = {
+        title: 'Humidity',
+        yaxis: { title: '% Humidity' },
+        yaxis2: {
+            title: 'Specific Humidity (kg/m3)',
+            overlaying: 'y',
+            side: 'right'
+        },
+        paper_bgcolor: background,
+        plot_bgcolor: background,
+        font: { color: "#EEEEEE" },
+        legend: { orientation: "h" },
+        colorway: ['#1f77b4', '#ff7f0e', '#2ca02c', '#1f77b4', '#ff7f0e', '#2ca02c',]
+    };
+
+    var ParticulatesLayout = {
+        title: 'Particulates',
+        yaxis: { title: 'ug/m3' },
+        paper_bgcolor: background,
+        plot_bgcolor: background,
+        font: { color: "#EEEEEE" },
+        legend: { orientation: "h" }
+    };
+
+    let TempDiv = document.getElementById('TempDiv')
+    let HumDiv = document.getElementById('HumDiv')
+    let PMxDiv = document.getElementById('PMxDiv')
+    let temperatureTraces = [];
+    let humidityTraces = [];
+    let particulatesTraces = [];
+
+
+
+    (async () => {
+        await asyncForEach(getLastFewDays(config.windowDays), async date => {
+            await graphMetric(TempDiv, temperatureTraces, 0, tempLayout, 'livingroom', 'Temperature', date, 'y1')
+            await graphMetric(TempDiv, temperatureTraces, 1, tempLayout, 'bedroom', 'Temperature', date, 'y1')
+            await graphMetric(TempDiv, temperatureTraces, 2, tempLayout, 'outside', 'Temperature', date, 'y1')
+        });
+
+        temperatureTraces.forEach(t => {
+            config.smoothingFunction(t);
+        })
+
+        Plotly.newPlot(TempDiv, temperatureTraces, tempLayout);
+
+        await asyncForEach(getLastFewDays(config.windowDays), async date => {
+            await graphMetric(HumDiv, humidityTraces, 0, humLayout, 'livingroom', 'Humidity', date, 'y1')
+            await graphMetric(HumDiv, humidityTraces, 1, humLayout, 'bedroom', 'Humidity', date, 'y1')
+            await graphMetric(HumDiv, humidityTraces, 2, humLayout, 'outside', 'Humidity', date, 'y1')
+        });
+
+        humidityTraces.forEach(t => {
+            config.smoothingFunction(t);
+        })
+
+        humidityTraces[3] = CalculateSpecificHumiditySeries(humidityTraces[0], temperatureTraces[0]);
+        humidityTraces[4] = CalculateSpecificHumiditySeries(humidityTraces[1], temperatureTraces[1]);
+        humidityTraces[5] = CalculateSpecificHumiditySeries(humidityTraces[2], temperatureTraces[2]);
+
+        Plotly.newPlot(HumDiv, humidityTraces, humLayout);
+
+        await asyncForEach(getLastFewDays(config.windowDays), async date => {
+            await graphMetric(PMxDiv, particulatesTraces, 0, ParticulatesLayout, 'bedroom', 'AirQualityPM1_0_ug_m-3', date, 'y1')
+            await graphMetric(PMxDiv, particulatesTraces, 1, ParticulatesLayout, 'bedroom', 'AirQualityPM2_5_ug_m-3', date, 'y1')
+            await graphMetric(PMxDiv, particulatesTraces, 2, ParticulatesLayout, 'bedroom', 'AirQualityPM10_ug_m-3', date, 'y1')
+        });
+        particulatesTraces.forEach(t => {
+            config.smoothingFunction(t);
+        })
+
+        Plotly.newPlot(PMxDiv, particulatesTraces, ParticulatesLayout);
+    })();
+
+    function PopulateConfigFromUrlParameters(config) {
+        const urlSearchParams = new URLSearchParams(window.location.search);
+        const params = Object.fromEntries(urlSearchParams.entries());
+        config.windowDays = parseInt(params.days ?? "5");
+        let smoothing = params.smoothing ?? "gFine"
+        config.smoothingFunction = null;
+        switch (smoothing) {
+            case "none": config.smoothingFunction = trace => {/*noop*/ }; break;
+            case "gFine": config.smoothingFunction = trace => GaussianSmoothing(trace, 10, 20); break;
+            case "gMed": config.smoothingFunction = trace => GaussianSmoothing(trace, 30, 60); break;
+            default: config.smoothingFunction = trace => {/*noop*/ }; break;
+        }
+    }
+
+    async function asyncForEach(array, callback) {
+        for (let index = 0; index < array.length; index++) {
+            await callback(array[index], index, array);
+        }
+    }
+
+    function ExponentialSmoothing(trace, factor) {
+        let rolling = trace.y[0];
+        for (let i = 0; i < trace.y.length; i++) {
+            trace.y[i] = (rolling * (1 - factor)) + (trace.y[i] * factor);
+            rolling = trace.y[i];
+        }
+    }
+
+    function clamp(val, min, max) {
+        return val > max ? max : val < min ? min : val;
+    }
+
+    function GaussianSmoothing(trace, width, window) {
+        let kernel = [...Array(2 * window + 1).keys()].map(i => i - window).map(i => Math.exp(-(i * i) / (2 * width * width)));
+        let kernelNormalization = kernel.reduce((a, b) => a + b)
+        kernel = kernel.map(i => i / kernelNormalization);
+        let length = trace.y.length;
+        for (let i = 0; i < length; i++) {
+            trace.y[i] = kernel.map((k, j) => trace.y[clamp(j + i, 0, length - 1)] * k).reduce((a, b) => a + b);
+        }
+    }
+
+    function CalculateSpecificHumiditySeries(relHum, temps) {
+        let returnable = {
+            x: relHum.x,
+            y: relHum.y.map((percentageRelHum, i) => {
+                let temperature = temps.y[i];
+                let temperatureK = temperature + 273.15;
+                let sHum = (WaterSaturationVaporPressureAtTemp(temperatureK) * percentageRelHum / 100) / (461.5 * (temperatureK));
+                return sHum;
+            }),
+            type: 'scatter',
+            name: relHum.source + ", Specific Humidity",
+            yaxis: "y2",
+            line: {
+                dash: 'dot',
+                width: 4
+            }
+        };
+        return returnable;
+    }
+
+    function WaterSaturationVaporPressureAtTemp(temp) {
+        let Tc = 647.096;
+        let Pc = 22064000;
+        a1 = -7.85951783;
+        a2 = 1.84408259;
+        a3 = -11.7866497;
+        a4 = 22.6807411;
+        a5 = -15.9618719;
+        a6 = 1.80122502;
+        x = (1 - (temp / Tc))
+        return Pc * Math.exp((Tc / temp) * (a1 * x + a2 * Math.pow(x, 1.5) + a3 * Math.pow(x, 3) + a4 * Math.pow(x, 3.5) + a5 * Math.pow(x, 4) + a6 * Math.pow(x, 7.5)))
+    }
+
+    function getLastFewDays(days) {
+        return [...Array(days).keys()].map(i => new Date(new Date().setDate(new Date().getDate() - (days - i - 1))).toISOString().substring(0, 10))
+    }
+    async function graphMetric(myDiv, data, index, layout, source, metric, date, axis) {
+        try {
+            let response = await fetch(
+                `http://192.168.1.171:8080/${metric}_${source}_${date}.json`,
+                { method: 'GET' }
+            )
+            let json = await response.json();
+            if (data[index] == undefined) {
+                data[index] = {
+                    x: json.map(r => r.TimeStamp),
+                    y: json.map(r => r.Value),
+                    type: 'scatter',
+                    source: source,
+                    name: source + ", " + metric,
+                    yaxis: axis,
+                };
+            }
+            else {
+                let trace = data[index];
+                trace.x = trace.x.concat(json.map(r => r.TimeStamp))
+                trace.y = trace.y.concat(json.map(r => r.Value))
+            }
+            Plotly.newPlot(myDiv, data, layout);
+        }
+        catch (error) {
+            console.error(error);
+            if (data[index] == undefined) {
+                data[index] = {
+                    x: [],
+                    y: [],
+                    type: 'scatter',
+                    name: source + ", " + metric,
+                    yaxis: axis,
+                };
+            }
+        }
+    }
+</script>
