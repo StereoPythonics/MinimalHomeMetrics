@@ -1,1 +1,1 @@
-python ./gatherTempAndHumidity.py $1 $2
+python ./gatherTempAndHumidity.py $1 $2 $3 $4
