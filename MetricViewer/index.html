@@ -17,7 +17,7 @@
 
     var tempLayout = {
         title: 'Temperature',
-        yaxis: { title: 'Temperature (C)' },
+        yaxis: { title: `Temperature (${config.t_unit})`, gridcolor: "#505050" },
         paper_bgcolor: background,
         plot_bgcolor: background,
         font: { color: "#EEEEEE" },
@@ -26,7 +26,7 @@
 
     var humLayout = {
         title: 'Humidity',
-        yaxis: { title: '% Humidity' },
+        yaxis: { title: '% Humidity', gridcolor: "#505050" },
         yaxis2: {
             title: 'Specific Humidity (kg/m3)',
             overlaying: 'y',
@@ -41,75 +41,88 @@
 
     var ParticulatesLayout = {
         title: 'Particulates',
-        yaxis: { title: 'ug/m3' },
+        yaxis: { title: 'ug/m3', gridcolor: "#505050" },
         paper_bgcolor: background,
         plot_bgcolor: background,
         font: { color: "#EEEEEE" },
         legend: { orientation: "h" }
     };
 
-    let TempDiv = document.getElementById('TempDiv')
-    let HumDiv = document.getElementById('HumDiv')
-    let PMxDiv = document.getElementById('PMxDiv')
-    let temperatureTraces = [];
-    let humidityTraces = [];
-    let particulatesTraces = [];
+    PopulateAllGraphs();
+    setInterval(PopulateAllGraphs, 60000)
+
+    function PopulateAllGraphs() {
+        let TempDiv = document.getElementById('TempDiv')
+        let HumDiv = document.getElementById('HumDiv')
+        let PMxDiv = document.getElementById('PMxDiv')
+        let temperatureTraces = [];
+        let humidityTraces = [];
+        let particulatesTraces = [];
+
+        (async () => {
+            await asyncForEach(getLastFewDays(config.windowDays), async date => {
+                await LoadMetricData(TempDiv, temperatureTraces, 0, tempLayout, 'livingroom', 'Temperature', date, 'y1')
+                await LoadMetricData(TempDiv, temperatureTraces, 1, tempLayout, 'bedroom', 'Temperature', date, 'y1')
+                await LoadMetricData(TempDiv, temperatureTraces, 2, tempLayout, 'outside', 'Temperature', date, 'y1')
+            });
+
+            temperatureTraces.forEach(t => {
+                config.smoothingFunction(t);
+            })
 
 
 
-    (async () => {
-        await asyncForEach(getLastFewDays(config.windowDays), async date => {
-            await graphMetric(TempDiv, temperatureTraces, 0, tempLayout, 'livingroom', 'Temperature', date, 'y1')
-            await graphMetric(TempDiv, temperatureTraces, 1, tempLayout, 'bedroom', 'Temperature', date, 'y1')
-            await graphMetric(TempDiv, temperatureTraces, 2, tempLayout, 'outside', 'Temperature', date, 'y1')
-        });
+            await asyncForEach(getLastFewDays(config.windowDays), async date => {
+                await LoadMetricData(HumDiv, humidityTraces, 0, humLayout, 'livingroom', 'Humidity', date, 'y1')
+                await LoadMetricData(HumDiv, humidityTraces, 1, humLayout, 'bedroom', 'Humidity', date, 'y1')
+                await LoadMetricData(HumDiv, humidityTraces, 2, humLayout, 'outside', 'Humidity', date, 'y1')
+            });
 
-        temperatureTraces.forEach(t => {
-            config.smoothingFunction(t);
-        })
+            humidityTraces.forEach(t => {
+                config.smoothingFunction(t);
+            })
 
-        Plotly.newPlot(TempDiv, temperatureTraces, tempLayout);
+            humidityTraces[3] = CalculateSpecificHumiditySeries(humidityTraces[0], temperatureTraces[0]);
+            humidityTraces[4] = CalculateSpecificHumiditySeries(humidityTraces[1], temperatureTraces[1]);
+            humidityTraces[5] = CalculateSpecificHumiditySeries(humidityTraces[2], temperatureTraces[2]);
 
-        await asyncForEach(getLastFewDays(config.windowDays), async date => {
-            await graphMetric(HumDiv, humidityTraces, 0, humLayout, 'livingroom', 'Humidity', date, 'y1')
-            await graphMetric(HumDiv, humidityTraces, 1, humLayout, 'bedroom', 'Humidity', date, 'y1')
-            await graphMetric(HumDiv, humidityTraces, 2, humLayout, 'outside', 'Humidity', date, 'y1')
-        });
 
-        humidityTraces.forEach(t => {
-            config.smoothingFunction(t);
-        })
 
-        humidityTraces[3] = CalculateSpecificHumiditySeries(humidityTraces[0], temperatureTraces[0]);
-        humidityTraces[4] = CalculateSpecificHumiditySeries(humidityTraces[1], temperatureTraces[1]);
-        humidityTraces[5] = CalculateSpecificHumiditySeries(humidityTraces[2], temperatureTraces[2]);
+            await asyncForEach(getLastFewDays(config.windowDays), async date => {
+                await LoadMetricData(PMxDiv, particulatesTraces, 0, ParticulatesLayout, 'bedroom', 'AirQualityPM1_0_ug_m-3', date, 'y1')
+                await LoadMetricData(PMxDiv, particulatesTraces, 1, ParticulatesLayout, 'bedroom', 'AirQualityPM2_5_ug_m-3', date, 'y1')
+                await LoadMetricData(PMxDiv, particulatesTraces, 2, ParticulatesLayout, 'bedroom', 'AirQualityPM10_ug_m-3', date, 'y1')
+            });
+            particulatesTraces.forEach(t => {
+                config.smoothingFunction(t);
+            })
 
-        Plotly.newPlot(HumDiv, humidityTraces, humLayout);
 
-        await asyncForEach(getLastFewDays(config.windowDays), async date => {
-            await graphMetric(PMxDiv, particulatesTraces, 0, ParticulatesLayout, 'bedroom', 'AirQualityPM1_0_ug_m-3', date, 'y1')
-            await graphMetric(PMxDiv, particulatesTraces, 1, ParticulatesLayout, 'bedroom', 'AirQualityPM2_5_ug_m-3', date, 'y1')
-            await graphMetric(PMxDiv, particulatesTraces, 2, ParticulatesLayout, 'bedroom', 'AirQualityPM10_ug_m-3', date, 'y1')
-        });
-        particulatesTraces.forEach(t => {
-            config.smoothingFunction(t);
-        })
+            temperatureTraces.forEach(t => t.y = t.y.map(v => config.tempFunction(v)))
+            temperatureTraces.forEach(t => t.x = t.x.map(v => config.utcOffsetFunction(v)))
+            humidityTraces.forEach(t => t.x = t.x.map(v => config.utcOffsetFunction(v)))
+            particulatesTraces.forEach(t => t.x = t.x.map(v => config.utcOffsetFunction(v)))
 
-        Plotly.newPlot(PMxDiv, particulatesTraces, ParticulatesLayout);
-    })();
-
+            Plotly.newPlot(TempDiv, temperatureTraces, tempLayout);
+            Plotly.newPlot(HumDiv, humidityTraces, humLayout);
+            Plotly.newPlot(PMxDiv, particulatesTraces, ParticulatesLayout);
+        })();
+    }
     function PopulateConfigFromUrlParameters(config) {
         const urlSearchParams = new URLSearchParams(window.location.search);
         const params = Object.fromEntries(urlSearchParams.entries());
         config.windowDays = parseInt(params.days ?? "5");
-        let smoothing = params.smoothing ?? "gFine"
-        config.smoothingFunction = null;
-        switch (smoothing) {
-            case "none": config.smoothingFunction = trace => {/*noop*/ }; break;
-            case "gFine": config.smoothingFunction = trace => GaussianSmoothing(trace, 10, 20); break;
-            case "gMed": config.smoothingFunction = trace => GaussianSmoothing(trace, 30, 60); break;
-            default: config.smoothingFunction = trace => {/*noop*/ }; break;
+        let smoothing = parseInt(params.smoothing ?? "5");
+        config.smoothingFunction = (isNaN(smoothing) || smoothing < 1) ? trace => {/*no-op*/ } : trace => GaussianSmoothing(trace, smoothing, smoothing * 2);
+        config.tempFunction = null
+        switch (params.t_unit) {
+            case "F": config.tempFunction = c => c * 1.8 + 32; config.t_unit = "F"; break;
+            case "C":
+            default: config.tempFunction = c => c; config.t_unit = "C"; break;
         }
+        utc_offset = parseInt(params.utc_offset ?? "0");
+        utc_offset = isNaN(utc_offset) ? 0 : utc_offset;
+        config.utcOffsetFunction = utc_offset == 0 ? d => d : d => new Date(new Date(d).getTime()+(3600000*utc_offset)).toISOString()
     }
 
     async function asyncForEach(array, callback) {
@@ -176,7 +189,7 @@
     function getLastFewDays(days) {
         return [...Array(days).keys()].map(i => new Date(new Date().setDate(new Date().getDate() - (days - i - 1))).toISOString().substring(0, 10))
     }
-    async function graphMetric(myDiv, data, index, layout, source, metric, date, axis) {
+    async function LoadMetricData(myDiv, data, index, layout, source, metric, date, axis) {
         try {
             let response = await fetch(
                 `http://192.168.1.171:8080/${metric}_${source}_${date}.json`,
@@ -198,7 +211,6 @@
                 trace.x = trace.x.concat(json.map(r => r.TimeStamp))
                 trace.y = trace.y.concat(json.map(r => r.Value))
             }
-            Plotly.newPlot(myDiv, data, layout);
         }
         catch (error) {
             console.error(error);
