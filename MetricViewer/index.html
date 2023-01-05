@@ -65,10 +65,7 @@
                 await LoadMetricData(TempDiv, temperatureTraces, 1, tempLayout, 'bedroom', 'Temperature', date, 'y1')
                 await LoadMetricData(TempDiv, temperatureTraces, 2, tempLayout, 'outside', 'Temperature', date, 'y1')
             });
-
-            temperatureTraces.forEach(t => {
-                config.smoothingFunction(t);
-            })
+            temperatureTraces.forEach(config.smoothingFunction);
 
 
 
@@ -77,10 +74,8 @@
                 await LoadMetricData(HumDiv, humidityTraces, 1, humLayout, 'bedroom', 'Humidity', date, 'y1')
                 await LoadMetricData(HumDiv, humidityTraces, 2, humLayout, 'outside', 'Humidity', date, 'y1')
             });
+            humidityTraces.forEach(config.smoothingFunction);
 
-            humidityTraces.forEach(t => {
-                config.smoothingFunction(t);
-            })
 
             humidityTraces[3] = CalculateSpecificHumiditySeries(humidityTraces[0], temperatureTraces[0]);
             humidityTraces[4] = CalculateSpecificHumiditySeries(humidityTraces[1], temperatureTraces[1]);
@@ -93,15 +88,13 @@
                 await LoadMetricData(PMxDiv, particulatesTraces, 1, ParticulatesLayout, 'bedroom', 'AirQualityPM2_5_ug_m-3', date, 'y1')
                 await LoadMetricData(PMxDiv, particulatesTraces, 2, ParticulatesLayout, 'bedroom', 'AirQualityPM10_ug_m-3', date, 'y1')
             });
-            particulatesTraces.forEach(t => {
-                config.smoothingFunction(t);
-            })
+            particulatesTraces.forEach(config.smoothingFunction);
 
 
-            temperatureTraces.forEach(t => t.y = t.y.map(v => config.tempFunction(v)))
-            temperatureTraces.forEach(t => t.x = t.x.map(v => config.utcOffsetFunction(v)))
-            humidityTraces.forEach(t => t.x = t.x.map(v => config.utcOffsetFunction(v)))
-            particulatesTraces.forEach(t => t.x = t.x.map(v => config.utcOffsetFunction(v)))
+            temperatureTraces.forEach(t => t.y = t.y.map(config.tempFunction));
+            temperatureTraces.forEach(t => t.x = t.x.map(config.utcOffsetFunction));
+            humidityTraces.forEach(t => t.x = t.x.map(config.utcOffsetFunction));
+            particulatesTraces.forEach(t => t.x = t.x.map(config.utcOffsetFunction));
 
             Plotly.newPlot(TempDiv, temperatureTraces, tempLayout);
             Plotly.newPlot(HumDiv, humidityTraces, humLayout);
